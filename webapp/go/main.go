@@ -911,6 +911,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 
 	var wg sync.WaitGroup
 
+	ok := true
+
 	wg.Add(len(items))
 
 	itemDetails := make([]ItemDetail, len(items))
@@ -922,12 +924,16 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				outputErrorMsg(w, http.StatusNotFound, "seller not found")
 				tx.Rollback()
+				ok = false
+				wg.Done()
 				return
 			}
 			category, err := getCategoryByID(tx, item.CategoryID)
 			if err != nil {
 				outputErrorMsg(w, http.StatusNotFound, "category not found")
 				tx.Rollback()
+				ok = false
+				wg.Done()
 				return
 			}
 
@@ -955,6 +961,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				if err != nil {
 					outputErrorMsg(w, http.StatusNotFound, "buyer not found")
 					tx.Rollback()
+					ok = false
+					wg.Done()
 					return
 				}
 				itemDetail.BuyerID = item.BuyerID
@@ -968,6 +976,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				log.Print(err)
 				outputErrorMsg(w, http.StatusInternalServerError, "db error")
 				tx.Rollback()
+				ok = false
+				wg.Done()
 				return
 			}
 
@@ -977,12 +987,16 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 				if err == sql.ErrNoRows {
 					outputErrorMsg(w, http.StatusNotFound, "shipping not found")
 					tx.Rollback()
+					ok = false
+					wg.Done()
 					return
 				}
 				if err != nil {
 					log.Print(err)
 					outputErrorMsg(w, http.StatusInternalServerError, "db error")
 					tx.Rollback()
+					ok = false
+					wg.Done()
 					return
 				}
 				ssr, err := APIShipmentStatus(getShipmentServiceURL(), &APIShipmentStatusReq{
@@ -992,6 +1006,8 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 					log.Print(err)
 					outputErrorMsg(w, http.StatusInternalServerError, "failed to request to shipment service")
 					tx.Rollback()
+					ok = false
+					wg.Done()
 					return
 				}
 
@@ -1005,6 +1021,9 @@ func getTransactions(w http.ResponseWriter, r *http.Request) {
 		}()
 	}
 	wg.Wait()
+	if !ok {
+		return
+	}
 	tx.Commit()
 
 	hasNext := false
